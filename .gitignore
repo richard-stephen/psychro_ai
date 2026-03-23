@@ -8,3 +8,9 @@ venv/
 ENV/
 *.log
 .DS_Store
+node_modules/
+dist/
+
+# Personal Claude settings
+MEMORY.md
+.claude/settings.local.json
