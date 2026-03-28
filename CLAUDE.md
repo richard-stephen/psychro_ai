@@ -31,29 +31,34 @@ Psychro AI is a professional web-based psychrometric chart tool for HVAC enginee
 - **SI Units**: All calculations MUST use **SI units** and **standard atmospheric pressure** (101325 Pa).
 *(Standard terms like enthalpy, humidity ratio, and psychrometric charts are assumed knowledge).*
 
-## PRD Files (Implementation Spec)
+## Supabase (Not Yet Implemented)
 
-The full implementation spec is split into sequential files in `prd/` for step-by-step execution:
+Auth, database, and storage via Supabase are **planned but not yet built**.
+When the time comes to implement Supabase, read `prd/01-supabase.md` for the full database schema, RLS policies, and setup instructions. **Do not read this file otherwise — it is not relevant to current work.**
 
-| File | Content |
-|------|---------|
-| `prd/00-overview.md` | Project overview, tech stack, architecture |
-| `prd/01-supabase.md` | Supabase setup: database schema, RLS policies, storage |
-| `prd/02-backend.md` | FastAPI API spec and backend file structure |
-| `prd/03-frontend.md` | React components, types, routing, state |
-| `prd/04-phases.md` | Step-by-step implementation phases with acceptance criteria |
-| `prd/05-reference.md` | Extensibility patterns and prototype code to preserve |
+## Extending the Application
 
-**How to use**:
-- Start with `prd/00-overview.md` — read it fully before writing any code
-- Follow the "Next" pointers at the bottom of each file
-- Complete each phase and verify acceptance criteria before moving on
-- The full PRD is also available as a single file in `PRD.md` for reference
+Follow these established patterns when adding new features:
 
-**Agent guardrails**:
-- Only use the provided context. If something is unclear or missing, ask for clarification instead of assuming.
-- Do not invent APIs, fields, or behaviors not specified in these documents.
-- Complete each phase fully and verify before moving to the next.
+**New chart overlay** (e.g., comfort zone, process lines):
+1. Backend: Add endpoint in `routers/calculations.py` + request/response schemas
+2. Frontend: Add trace builder in `chartBuilder.ts`
+3. Frontend: Add toggle in Sidebar + state in `chartDataStore`
+
+**New calculation** (e.g., wet bulb, specific volume):
+1. Backend: Add function in `psychrometrics.py`
+2. Backend: Add to existing response or create new endpoint
+3. Frontend: Update types in `types.ts`, display in UI
+
+**New sidebar panel** (e.g., process plotter):
+1. Frontend: Create component in `components/forms/`
+2. Frontend: Add to `Sidebar.tsx` as collapsible section
+3. Backend: Add endpoint if calculation needed
+
+**New Supabase table** (when Supabase is implemented):
+1. Create table via SQL (follow patterns in `prd/01-supabase.md`)
+2. Enable RLS, add policies (same ownership pattern as existing tables)
+3. Add TypeScript type in `types.ts`
 
 ## Centralized Deployment
 - **Database/Auth/Storage**: Supabase (managed)
