@@ -8,7 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Header />
       <div className="flex flex-1 min-h-0 max-md:flex-col">
         <Sidebar />
-        <main className="flex-1 min-w-0 bg-grid">{children}</main>
+        <main className="flex-1 min-w-0">{children}</main>
       </div>
       <ChatButton />
     </div>

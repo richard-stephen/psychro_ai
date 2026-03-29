@@ -95,23 +95,21 @@ def get_base_chart_data() -> dict:
         "humidity_ratios": W_SAT_LIST,
     }
 
-    # RH curves + annotation positions
+    # RH curves + annotation positions (all labels at same x for vertical alignment)
     rh_curves = {}
     rh_annotations = []
+    label_index = int(np.argmin(np.abs(T_DB_RANGE - 32)))  # fixed x ≈ 32°C
     for rh in RH_LEVELS:
         W_rh_list = RH_CURVES[rh]
         rh_curves[str(rh)] = {
             "temperatures": T_DB_RANGE.tolist(),
             "humidity_ratios": W_rh_list,
         }
-        # Annotation position logic (from main.py lines 92-94)
-        index_position = int(len(T_DB_RANGE) * 0.75)
-        while index_position > 0 and W_rh_list[index_position] > W_MAX:
-            index_position -= 1
+        w_at_label = W_rh_list[label_index]
         rh_annotations.append({
             "rh_value": rh,
-            "x": float(T_DB_RANGE[index_position]),
-            "y": W_rh_list[index_position],
+            "x": float(T_DB_RANGE[label_index]),
+            "y": w_at_label if w_at_label is not None and w_at_label <= W_MAX else None,
         })
 
     # Enthalpy lines
@@ -171,6 +169,265 @@ def get_base_chart_data() -> dict:
         "dewpoint_lines": dewpoint_lines,
         "vertical_lines": vertical_lines,
         "axis_config": axis_config,
+    }
+
+
+def calc_sensible_heating_cooling(T1, RH1, T2_target) -> dict:
+    """Sensible heating/cooling: constant humidity ratio, temperature changes."""
+    W1 = calc_humidity_ratio(T1, RH1)
+    if W1 is None:
+        raise ValueError("Could not compute humidity ratio for start state.")
+
+    W1_kg = W1 / GRAMS_PER_KG
+    h1 = calc_enthalpy(T1, W1)
+    if h1 is None:
+        raise ValueError("Could not compute enthalpy for start state.")
+
+    # Check if target temp would push above saturation (below dewpoint)
+    W_sat_at_T2 = calc_humidity_ratio(T2_target, 100.0)
+    if W_sat_at_T2 is not None and W1 > W_sat_at_T2:
+        raise ValueError(
+            "Target temperature is below the dewpoint of the start state. "
+            "Use Cooling & Dehumidification instead."
+        )
+
+    # End state: same W, new T
+    RH2 = psy.GetRelHumFromHumRatio(T2_target, W1_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    h2 = calc_enthalpy(T2_target, W1)
+    if h2 is None:
+        raise ValueError("Could not compute enthalpy for end state.")
+
+    # Line is horizontal at constant W from T1 to T2
+    n_points = 50
+    line_temps = np.linspace(T1, T2_target, n_points).tolist()
+    line_w = [W1] * n_points
+
+    delta_h = h2 - h1
+
+    return {
+        "process_type": "sensible_heating_cooling",
+        "start_point": {
+            "temperature": round(T1, 2),
+            "relative_humidity": round(RH1, 2),
+            "humidity_ratio": round(W1, 4),
+            "enthalpy": round(h1, 2),
+        },
+        "end_point": {
+            "temperature": round(T2_target, 2),
+            "relative_humidity": round(RH2, 2),
+            "humidity_ratio": round(W1, 4),
+            "enthalpy": round(h2, 2),
+        },
+        "line_temperatures": [round(t, 4) for t in line_temps],
+        "line_humidity_ratios": [round(w, 4) for w in line_w],
+        "delta_enthalpy": round(delta_h, 2),
+        "sensible_heat_ratio": 1.0,
+    }
+
+
+def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
+    """Cooling & dehumidification toward an apparatus dewpoint (ADP)."""
+    W1 = calc_humidity_ratio(T1, RH1)
+    if W1 is None:
+        raise ValueError("Could not compute humidity ratio for start state.")
+    h1 = calc_enthalpy(T1, W1)
+    if h1 is None:
+        raise ValueError("Could not compute enthalpy for start state.")
+
+    # ADP is on saturation curve (100% RH)
+    W_adp = calc_humidity_ratio(T_adp, 100.0)
+    if W_adp is None:
+        raise ValueError("Could not compute humidity ratio at ADP.")
+
+    # Validate: ADP must be below start state dewpoint (i.e. W_adp < W1)
+    if W_adp >= W1:
+        raise ValueError(
+            "ADP temperature must be below the dewpoint of the start state "
+            "(ADP humidity ratio must be less than start humidity ratio)."
+        )
+
+    # End state via bypass factor: blend between ADP and start
+    T2 = T_adp + bypass_factor * (T1 - T_adp)
+    W2 = W_adp + bypass_factor * (W1 - W_adp)
+
+    W2_kg = W2 / GRAMS_PER_KG
+    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    h2 = calc_enthalpy(T2, W2)
+    if h2 is None:
+        raise ValueError("Could not compute enthalpy for end state.")
+
+    # Straight line from start to end
+    n_points = 50
+    line_temps = np.linspace(T1, T2, n_points).tolist()
+    line_w = np.linspace(W1, W2, n_points).tolist()
+
+    delta_h = h2 - h1
+    delta_w = W2 - W1
+    delta_t = T2 - T1
+    # SHR = sensible / total = cp*ΔT / Δh
+    shr = (1.006 * delta_t) / (delta_h) if delta_h != 0 else None
+
+    return {
+        "process_type": "cooling_dehumidification",
+        "start_point": {
+            "temperature": round(T1, 2),
+            "relative_humidity": round(RH1, 2),
+            "humidity_ratio": round(W1, 4),
+            "enthalpy": round(h1, 2),
+        },
+        "end_point": {
+            "temperature": round(T2, 2),
+            "relative_humidity": round(RH2, 2),
+            "humidity_ratio": round(W2, 4),
+            "enthalpy": round(h2, 2),
+        },
+        "line_temperatures": [round(t, 4) for t in line_temps],
+        "line_humidity_ratios": [round(w, 4) for w in line_w],
+        "delta_enthalpy": round(delta_h, 2),
+        "sensible_heat_ratio": round(shr, 4) if shr is not None else None,
+    }
+
+
+def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
+    """Evaporative cooling: follows constant wet-bulb temperature line."""
+    if target_RH <= RH1:
+        raise ValueError("Target RH must be higher than start RH.")
+    if target_RH > 100:
+        raise ValueError("Target RH cannot exceed 100%.")
+
+    W1 = calc_humidity_ratio(T1, RH1)
+    if W1 is None:
+        raise ValueError("Could not compute humidity ratio for start state.")
+    W1_kg = W1 / GRAMS_PER_KG
+    h1 = calc_enthalpy(T1, W1)
+    if h1 is None:
+        raise ValueError("Could not compute enthalpy for start state.")
+
+    # Find wet-bulb temperature of start state
+    T_wb = psy.GetTWetBulbFromRelHum(T1, RH1 / 100.0, ATMOSPHERIC_PRESSURE_PA)
+
+    # Sweep T_db downward from T1, following constant wet-bulb line
+    # At each T_db, compute W from wet-bulb, then check RH
+    n_sweep = 200
+    T_sweep = np.linspace(T1, T_wb, n_sweep)
+    path_temps = [T1]
+    path_w = [W1]
+    T2 = None
+    W2 = None
+
+    for T_db in T_sweep[1:]:
+        try:
+            W_kg = psy.GetHumRatioFromTWetBulb(T_db, T_wb, ATMOSPHERIC_PRESSURE_PA)
+            W_gkg = W_kg * GRAMS_PER_KG
+            RH_at_point = psy.GetRelHumFromHumRatio(T_db, W_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+        except (ValueError, TypeError):
+            continue
+
+        path_temps.append(float(T_db))
+        path_w.append(float(W_gkg))
+
+        if RH_at_point >= target_RH:
+            # Interpolate between this point and previous to find exact crossing
+            T2 = float(T_db)
+            W2 = float(W_gkg)
+            break
+
+    if T2 is None or W2 is None:
+        raise ValueError("Could not reach target RH along wet-bulb line.")
+
+    W2_kg = W2 / GRAMS_PER_KG
+    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    h2 = calc_enthalpy(T2, W2)
+    if h2 is None:
+        raise ValueError("Could not compute enthalpy for end state.")
+
+    # Resample path to ~50 evenly spaced points
+    n_out = 50
+    indices = np.linspace(0, len(path_temps) - 1, n_out).astype(int)
+    line_temps = [round(path_temps[i], 4) for i in indices]
+    line_w = [round(path_w[i], 4) for i in indices]
+
+    delta_h = h2 - h1
+
+    return {
+        "process_type": "evaporative_cooling",
+        "start_point": {
+            "temperature": round(T1, 2),
+            "relative_humidity": round(RH1, 2),
+            "humidity_ratio": round(W1, 4),
+            "enthalpy": round(h1, 2),
+        },
+        "end_point": {
+            "temperature": round(T2, 2),
+            "relative_humidity": round(RH2, 2),
+            "humidity_ratio": round(W2, 4),
+            "enthalpy": round(h2, 2),
+        },
+        "line_temperatures": line_temps,
+        "line_humidity_ratios": line_w,
+        "delta_enthalpy": round(delta_h, 2),
+        "sensible_heat_ratio": None,
+    }
+
+
+def calc_mixing(T1, RH1, T2, RH2, ratio) -> dict:
+    """Mixing of two airstreams using enthalpy-based method (thermodynamically correct)."""
+    # Stream 1
+    W1 = calc_humidity_ratio(T1, RH1)
+    if W1 is None:
+        raise ValueError("Could not compute humidity ratio for stream 1.")
+    h1 = calc_enthalpy(T1, W1)
+    if h1 is None:
+        raise ValueError("Could not compute enthalpy for stream 1.")
+
+    # Stream 2
+    W2 = calc_humidity_ratio(T2, RH2)
+    if W2 is None:
+        raise ValueError("Could not compute humidity ratio for stream 2.")
+    h2 = calc_enthalpy(T2, W2)
+    if h2 is None:
+        raise ValueError("Could not compute enthalpy for stream 2.")
+
+    # Mass-weighted averages (ratio = m1/(m1+m2))
+    W_mix = ratio * W1 + (1 - ratio) * W2  # g/kg — mass is conserved
+    h_mix = ratio * h1 + (1 - ratio) * h2  # kJ/kg — enthalpy is conserved
+
+    # Derive T_mix from h_mix and W_mix using psychrolib
+    W_mix_kg = W_mix / GRAMS_PER_KG
+    h_mix_J = h_mix * 1000  # psychrolib expects J/kg
+    T_mix = psy.GetTDryBulbFromEnthalpyAndHumRatio(h_mix_J, W_mix_kg)
+    RH_mix = psy.GetRelHumFromHumRatio(T_mix, W_mix_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+
+    # 3-point line: stream 1 → mix point → stream 2
+    line_temps = [T1, T_mix, T2]
+    line_w = [W1, W_mix, W2]
+
+    delta_h = h_mix - h1
+
+    return {
+        "process_type": "mixing",
+        "start_point": {
+            "temperature": round(T1, 2),
+            "relative_humidity": round(RH1, 2),
+            "humidity_ratio": round(W1, 4),
+            "enthalpy": round(h1, 2),
+        },
+        "end_point": {
+            "temperature": round(T2, 2),
+            "relative_humidity": round(RH2, 2),
+            "humidity_ratio": round(W2, 4),
+            "enthalpy": round(h2, 2),
+        },
+        "mix_point": {
+            "temperature": round(T_mix, 2),
+            "relative_humidity": round(RH_mix, 2),
+            "humidity_ratio": round(W_mix, 4),
+            "enthalpy": round(h_mix, 2),
+        },
+        "line_temperatures": [round(t, 4) for t in line_temps],
+        "line_humidity_ratios": [round(w, 4) for w in line_w],
+        "delta_enthalpy": round(delta_h, 2),
+        "sensible_heat_ratio": None,
     }
 
 

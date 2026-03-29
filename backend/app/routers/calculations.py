@@ -2,8 +2,8 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import io
 
-from app.schemas.requests import PointRequest, DesignZoneRequest
-from app.schemas.responses import PointResult, DataPoint, DatasetResult, DesignZoneResult, Polygon
+from app.schemas.requests import PointRequest, DesignZoneRequest, ProcessRequest
+from app.schemas.responses import PointResult, DataPoint, DatasetResult, DesignZoneResult, Polygon, ProcessResult
 from app.services import psychrometrics
 
 router = APIRouter()
@@ -79,3 +79,31 @@ def calculate_design_zone(request: DesignZoneRequest):
         request.min_temp, request.max_temp, request.min_rh, request.max_rh
     )
     return DesignZoneResult(polygon=Polygon(x=polygon["x"], y=polygon["y"]))
+
+
+@router.post("/calculate/process", response_model=ProcessResult)
+def calculate_process(request: ProcessRequest):
+    try:
+        if request.process_type == "sensible_heating_cooling":
+            result = psychrometrics.calc_sensible_heating_cooling(
+                request.temperature, request.humidity, request.target_temperature
+            )
+        elif request.process_type == "cooling_dehumidification":
+            result = psychrometrics.calc_cooling_dehumidification(
+                request.temperature, request.humidity, request.adp_temperature, request.bypass_factor
+            )
+        elif request.process_type == "evaporative_cooling":
+            result = psychrometrics.calc_evaporative_cooling(
+                request.temperature, request.humidity, request.target_rh
+            )
+        elif request.process_type == "mixing":
+            result = psychrometrics.calc_mixing(
+                request.temperature_1, request.humidity_1,
+                request.temperature_2, request.humidity_2,
+                request.ratio,
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown process type: {request.process_type}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result

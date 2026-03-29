@@ -1,4 +1,4 @@
-import type { BaseChartData, PointResult, DatasetResult, DesignZoneRequest, DesignZoneResult } from './types';
+import type { BaseChartData, PointResult, DatasetResult, DesignZoneRequest, DesignZoneResult, ProcessResult } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -37,5 +37,13 @@ export function calculateDesignZone(config: DesignZoneRequest): Promise<DesignZo
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
+  });
+}
+
+export function calculateProcess(body: Record<string, unknown>): Promise<ProcessResult> {
+  return request('/api/v1/calculate/process', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 }

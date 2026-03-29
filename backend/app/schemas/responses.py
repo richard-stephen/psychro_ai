@@ -27,3 +27,21 @@ class Polygon(BaseModel):
 
 class DesignZoneResult(BaseModel):
     polygon: Polygon
+
+
+class ProcessPoint(BaseModel):
+    temperature: float
+    relative_humidity: float
+    humidity_ratio: float
+    enthalpy: float
+
+
+class ProcessResult(BaseModel):
+    process_type: str
+    start_point: ProcessPoint
+    end_point: ProcessPoint
+    mix_point: ProcessPoint | None = None
+    line_temperatures: list[float]
+    line_humidity_ratios: list[float]
+    delta_enthalpy: float
+    sensible_heat_ratio: float | None

@@ -111,3 +111,46 @@ export interface DesignZoneConfig {
   maxRH: number;
   polygon?: Polygon;
 }
+
+// ── Process types ───────────────────────────────────────────────────
+
+export type ProcessType = 'sensible_heating_cooling' | 'cooling_dehumidification' | 'evaporative_cooling' | 'mixing';
+
+export interface ProcessPoint {
+  temperature: number;
+  relative_humidity: number;
+  humidity_ratio: number;
+  enthalpy: number;
+}
+
+export interface ProcessResult {
+  process_type: ProcessType;
+  start_point: ProcessPoint;
+  end_point: ProcessPoint;
+  mix_point?: ProcessPoint;
+  line_temperatures: number[];
+  line_humidity_ratios: number[];
+  delta_enthalpy: number;
+  sensible_heat_ratio: number | null;
+}
+
+export interface ChartProcess {
+  id: string;
+  result: ProcessResult;
+}
+
+// ── Display settings ────────────────────────────────────────────────
+
+import type { ChartThemeName } from './constants';
+
+export interface DisplaySettings {
+  showEnthalpyLines: boolean;
+  showRhLines: boolean;
+  chartTheme: ChartThemeName;
+}
+
+export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+  showEnthalpyLines: true,
+  showRhLines: true,
+  chartTheme: 'default',
+};

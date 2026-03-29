@@ -4,24 +4,14 @@ This file provides backend-specific guidance for Claude.
 
 ## Running the Backend (FastAPI)
 
+Since we are using Docker, you can run both the frontend and backend locally with:
 ```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+docker-compose up --build
 ```
-
-Backend runs at `http://localhost:8000`. For production (Render):
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+Backend runs at `http://localhost:8000`, frontend at `http://localhost:5173`.
 
 Python version: **3.11**
 
-### Both (Docker)
-```bash
-docker-compose up
-```
-Backend at `:8000`, frontend at `:5173`.
 
 ## Testing
 
@@ -39,7 +29,7 @@ backend/
     main.py              # FastAPI app, CORS, health check
     config.py            # Settings from env vars
     routers/
-      calculations.py    # /calculate/point, /calculate/dataset, /calculate/design-zone
+      calculations.py    # /calculate/point, /calculate/dataset, /calculate/design-zone, /calculate/process
       chart_data.py      # /chart/base-data
     services/
       psychrometrics.py  # All psychrometric math (psychrolib + numpy)
@@ -60,6 +50,7 @@ backend/
 | POST | `/api/v1/calculate/point` | Single point: `{temperature, humidity}` → `{humidity_ratio, enthalpy}` |
 | POST | `/api/v1/calculate/dataset` | .xlsx upload → array of `{temperature, humidity_ratio}` |
 | POST | `/api/v1/calculate/design-zone` | Zone config → polygon coordinates |
+| POST | `/api/v1/calculate/process` | Calculates thermodynamic processes (`sensible_heating_cooling`, `cooling_dehumidification`, `evaporative_cooling`, `mixing`) |
 | GET | `/health` | Health check |
 
 All calculation endpoints are public (no auth required).
@@ -76,6 +67,3 @@ All calculation endpoints are public (no auth required).
 ```
 CORS_ORIGINS=http://localhost:5173,https://psychro.ai
 ```
-
-## Deployment
-- **Backend**: Render web service

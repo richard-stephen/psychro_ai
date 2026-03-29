@@ -11,6 +11,8 @@ export default function ManualPointForm() {
   const [humidity, setHumidity] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const addPoint = useChartDataStore((s) => s.addPoint);
+  const clearPoints = useChartDataStore((s) => s.clearPoints);
+  const hasPoints = useChartDataStore((s) => s.dataPoints.length > 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +59,6 @@ export default function ManualPointForm() {
           step="any"
           min={-10}
           max={50}
-          placeholder="-10 to 50"
           value={temperature}
           onChange={(e) => setTemperature(e.target.value)}
           className="font-mono"
@@ -71,15 +72,21 @@ export default function ManualPointForm() {
           step="any"
           min={0}
           max={100}
-          placeholder="0 to 100"
           value={humidity}
           onChange={(e) => setHumidity(e.target.value)}
           className="font-mono"
         />
       </div>
-      <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={isSubmitting}>
-        {isSubmitting ? 'Plotting…' : 'Plot Point'}
-      </Button>
+      <div className="flex gap-2">
+        <Button type="submit" className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90" disabled={isSubmitting}>
+          {isSubmitting ? 'Plotting…' : 'Plot Point'}
+        </Button>
+        {hasPoints && (
+          <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={clearPoints}>
+            Clear
+          </Button>
+        )}
+      </div>
     </form>
   );
 }

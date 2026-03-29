@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 // react-plotly.js CJS default export workaround for ESM
 const Plot = typeof (_Plot as any).default === 'function' ? (_Plot as any).default : _Plot;
+import { CHART_THEMES } from '@/lib/constants';
 import { useChartDataStore } from '@/stores/chartDataStore';
 import { fetchBaseChartData } from '@/lib/api';
 import {
@@ -12,19 +13,23 @@ import {
   buildDataPointTrace,
   buildUploadedDataTraces,
   buildDesignZoneTrace,
+  buildProcessTraces,
+  buildProcessAnnotations,
   buildChartLayout,
   PLOT_CONFIG,
 } from '@/lib/chartBuilder';
 
 export default function PsychrometricChart() {
-  const { baseData, dataPoints, uploadedDatasets, designZone, isLoading } =
+  const { baseData, dataPoints, uploadedDatasets, designZone, processes, isLoading, displaySettings } =
     useChartDataStore(
       useShallow((s) => ({
         baseData: s.baseData,
         dataPoints: s.dataPoints,
         uploadedDatasets: s.uploadedDatasets,
         designZone: s.designZone,
+        processes: s.processes,
         isLoading: s.isLoading,
+        displaySettings: s.displaySettings,
       }))
     );
 
@@ -53,12 +58,13 @@ export default function PsychrometricChart() {
   const { traces, layout } = useMemo(() => {
     if (!baseData) return { traces: [], layout: {} };
 
-    const baseTraces = buildAllTraces(baseData);
-    const annotations = buildAllAnnotations(baseData);
+    const colors = CHART_THEMES[displaySettings.chartTheme];
+    const baseTraces = buildAllTraces(baseData, displaySettings, colors);
+    const annotations = buildAllAnnotations(baseData, displaySettings, colors);
     const userTraces = [];
 
     if (dataPoints.length > 0) {
-      userTraces.push(buildDataPointTrace(dataPoints));
+      userTraces.push(buildDataPointTrace(dataPoints, colors));
     }
 
     if (uploadedDatasets.length > 0) {
@@ -66,14 +72,22 @@ export default function PsychrometricChart() {
     }
 
     if (designZone?.enabled && designZone?.polygon) {
-      userTraces.push(buildDesignZoneTrace(designZone.polygon));
+      userTraces.push(buildDesignZoneTrace(designZone.polygon, colors));
+    }
+
+    const processAnnotations = processes.length > 0
+      ? buildProcessAnnotations(processes, colors)
+      : [];
+
+    if (processes.length > 0) {
+      userTraces.push(...buildProcessTraces(processes, colors));
     }
 
     return {
       traces: [...baseTraces, ...userTraces],
-      layout: buildChartLayout(annotations),
+      layout: buildChartLayout([...annotations, ...processAnnotations], colors),
     };
-  }, [baseData, dataPoints, uploadedDatasets, designZone]);
+  }, [baseData, dataPoints, uploadedDatasets, designZone, processes, displaySettings]);
 
   if (isLoading && !baseData) {
     return (
@@ -85,12 +99,24 @@ export default function PsychrometricChart() {
   }
 
   return (
-    <Plot
-      data={traces}
-      layout={layout}
-      config={PLOT_CONFIG}
-      useResizeHandler
-      style={{ width: '100%', height: '100%' }}
-    />
+    <div className="flex h-full w-full flex-col p-2">
+      <div className="flex items-baseline gap-2 px-1 pb-1">
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">
+          Psychrometric Chart
+        </h2>
+        <p className="text-[10px] text-muted-foreground">
+          101.325 kPa
+        </p>
+      </div>
+      <div className="flex-1 min-h-0 rounded-xl bg-card shadow-sm ring-1 ring-border/50">
+        <Plot
+          data={traces}
+          layout={layout}
+          config={PLOT_CONFIG}
+          useResizeHandler
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
+    </div>
   );
 }
