@@ -18,6 +18,7 @@ import {
   buildChartLayout,
   PLOT_CONFIG,
 } from '@/lib/chartBuilder';
+import { registerGraphDiv } from '@/lib/chartExport';
 
 export default function PsychrometricChart() {
   const { baseData, dataPoints, uploadedDatasets, designZone, processes, isLoading, displaySettings } =
@@ -115,6 +116,7 @@ export default function PsychrometricChart() {
           config={PLOT_CONFIG}
           useResizeHandler
           style={{ width: '100%', height: '100%' }}
+          onInitialized={(_figure, graphDiv) => registerGraphDiv(graphDiv as HTMLElement)}
         />
       </div>
     </div>

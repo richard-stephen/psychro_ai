@@ -202,9 +202,9 @@ export function buildProcessTraces(processes: ChartProcess[], colors: ChartTheme
       mode: 'lines+markers' as const,
       type: 'scatter' as const,
       name: `${label}<br>Δh: ${deltaH} kJ/kg`,
-      line: { color: colors.process_line, width: 2.5 },
+      line: { color: proc.color, width: 2.5 },
       marker: {
-        color: colors.process_line,
+        color: proc.color,
         size: result.line_temperatures.map((_, i) =>
           i === 0 || i === n - 1 ? 10 : (isMixing && i === 1) ? 12 : 0
         ),
@@ -248,17 +248,15 @@ export function buildProcessAnnotations(
       arrowhead: 2,
       arrowsize: 1.5,
       arrowwidth: 2,
-      arrowcolor: colors.process_line,
+      arrowcolor: proc.color,
       text: '',
     });
 
     if (!isMixing) {
-      const mid = Math.floor((n - 1) / 2);
-      const head = Math.min(mid + 1, n - 1);
-      if (mid !== head) {
-        annotations.push(makeArrow(mid, head));
-      } else if (n === 2) {
-        annotations.push(makeArrow(0, 1));
+      const tailIdx = Math.max(0, Math.floor((n - 1) * 0.3));
+      const headIdx = Math.min(n - 1, Math.ceil((n - 1) * 0.7));
+      if (tailIdx !== headIdx) {
+        annotations.push(makeArrow(tailIdx, headIdx));
       }
     } else {
       annotations.push(makeArrow(0, 1));
@@ -374,10 +372,6 @@ export const PLOT_CONFIG: Partial<Config> = {
   modeBarButtonsToRemove: [
     'zoom2d', 'pan2d', 'select2d', 'lasso2d',
     'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d',
+    'toImage',
   ],
-  toImageButtonOptions: {
-    format: 'png',
-    scale: 3,
-    filename: 'psychrometric-chart',
-  },
 };

@@ -134,8 +134,47 @@ export interface ProcessResult {
   sensible_heat_ratio: number | null;
 }
 
+export interface SensibleInputs {
+  process_type: 'sensible_heating_cooling';
+  temperature: number;
+  humidity: number;
+  target_temperature: number;
+}
+
+export interface CoolingDehumidInputs {
+  process_type: 'cooling_dehumidification';
+  temperature: number;
+  humidity: number;
+  adp_temperature: number;
+  bypass_factor: number;
+}
+
+export interface EvaporativeCoolingInputs {
+  process_type: 'evaporative_cooling';
+  temperature: number;
+  humidity: number;
+  target_rh: number;
+}
+
+export interface MixingInputs {
+  process_type: 'mixing';
+  temperature_1: number;
+  humidity_1: number;
+  temperature_2: number;
+  humidity_2: number;
+  ratio: number;
+}
+
+export type ProcessInputSnapshot =
+  | SensibleInputs
+  | CoolingDehumidInputs
+  | EvaporativeCoolingInputs
+  | MixingInputs;
+
 export interface ChartProcess {
   id: string;
+  color: string;
+  inputs: ProcessInputSnapshot;
   result: ProcessResult;
 }
 

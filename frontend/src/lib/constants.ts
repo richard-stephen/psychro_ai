@@ -140,3 +140,11 @@ export const DEFAULT_DESIGN_ZONE = {
 } as const;
 
 export const YEAR_HOURS = 8760;
+
+export const PROCESS_CHAIN_COLORS: readonly string[] = [
+  '#6450b4',  // P1 — purple
+  '#e76f51',  // P2 — orange
+  '#2a9d8f',  // P3 — teal
+  '#e9c46a',  // P4 — amber
+  '#c83c78',  // P5 — rose
+] as const;

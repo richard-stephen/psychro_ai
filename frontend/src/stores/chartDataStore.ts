@@ -20,6 +20,7 @@ interface ChartDataState {
   addProcess: (process: ChartProcess) => void;
   removeProcess: (id: string) => void;
   clearProcesses: () => void;
+  updateProcessColor: (id: string, color: string) => void;
   setLoading: (loading: boolean) => void;
   clearData: () => void;
   setDisplaySettings: (patch: Partial<DisplaySettings>) => void;
@@ -40,9 +41,10 @@ export const useChartDataStore = create<ChartDataState>((set) => ({
   clearPoints: () => set({ dataPoints: [] }),
   setUploadedData: (datasets) => set({ uploadedDatasets: datasets }),
   setDesignZone: (zone) => set({ designZone: zone }),
-  addProcess: (process) => set({ processes: [process] }),
+  addProcess: (process) => set((s) => s.processes.length >= 5 ? s : { processes: [...s.processes, process] }),
   removeProcess: (id) => set((s) => ({ processes: s.processes.filter((p) => p.id !== id) })),
   clearProcesses: () => set({ processes: [] }),
+  updateProcessColor: (id, color) => set((s) => ({ processes: s.processes.map((p) => p.id === id ? { ...p, color } : p) })),
   setLoading: (loading) => set({ isLoading: loading }),
   clearData: () => set({ dataPoints: [], uploadedDatasets: [], designZone: null, processes: [] }),
   setDisplaySettings: (patch) => set((s) => ({ displaySettings: { ...s.displaySettings, ...patch } })),

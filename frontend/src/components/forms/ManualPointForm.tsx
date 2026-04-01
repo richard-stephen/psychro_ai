@@ -51,7 +51,7 @@ export default function ManualPointForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <Label htmlFor="temperature">Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
         <Input
           id="temperature"
@@ -64,7 +64,7 @@ export default function ManualPointForm() {
           className="font-mono"
         />
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <Label htmlFor="humidity">Relative Humidity <span className="font-mono text-muted-foreground">(%)</span></Label>
         <Input
           id="humidity"

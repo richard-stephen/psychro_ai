@@ -230,7 +230,7 @@ export default function ProcessForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <Label htmlFor="proc-type">Process Type</Label>
         <select
           id="proc-type"
@@ -249,7 +249,7 @@ export default function ProcessForm() {
       {/* Common start state inputs for all non-mixing processes */}
       {processType !== 'mixing' && (
         <>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <Label htmlFor="proc-temp">Start Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
             <Input
               id="proc-temp"
@@ -262,7 +262,7 @@ export default function ProcessForm() {
               className="font-mono"
             />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <Label htmlFor="proc-rh">Start RH <span className="font-mono text-muted-foreground">(%)</span></Label>
             <Input
               id="proc-rh"
@@ -280,7 +280,7 @@ export default function ProcessForm() {
 
       {/* Sensible Heating/Cooling: target temperature */}
       {processType === 'sensible_heating_cooling' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label htmlFor="proc-target-temp">Target Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
           <Input
             id="proc-target-temp"
@@ -298,7 +298,7 @@ export default function ProcessForm() {
       {/* Cooling & Dehumidification: ADP temperature + bypass factor */}
       {processType === 'cooling_dehumidification' && (
         <>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <Label htmlFor="proc-adp-temp">ADP Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
             <Input
               id="proc-adp-temp"
@@ -311,7 +311,7 @@ export default function ProcessForm() {
               className="font-mono"
             />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <Label htmlFor="proc-bf">Bypass Factor <span className="font-mono text-muted-foreground">(0–1)</span></Label>
             <Input
               id="proc-bf"
@@ -329,7 +329,7 @@ export default function ProcessForm() {
 
       {/* Evaporative Cooling: target RH */}
       {processType === 'evaporative_cooling' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label htmlFor="proc-target-rh">Target RH <span className="font-mono text-muted-foreground">(%)</span></Label>
           <Input
             id="proc-target-rh"
@@ -347,28 +347,34 @@ export default function ProcessForm() {
       {/* Mixing: two streams + ratio */}
       {processType === 'mixing' && (
         <>
-          <p className="text-xs font-medium text-muted-foreground">Stream 1</p>
-          <div className="space-y-1.5">
-            <Label htmlFor="proc-t1">Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
-            <Input id="proc-t1" type="number" step="any" min={-10} max={50} placeholder="-10 to 50" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="font-mono" />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Stream 1</p>
+            <div className="space-y-1">
+              <Label htmlFor="proc-t1">Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
+              <Input id="proc-t1" type="number" step="any" min={-10} max={50} placeholder="-10 to 50" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="font-mono" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="proc-rh1">RH <span className="font-mono text-muted-foreground">(%)</span></Label>
+              <Input id="proc-rh1" type="number" step="any" min={0} max={100} value={humidity} onChange={(e) => setHumidity(e.target.value)} className="font-mono" />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="proc-rh1">RH <span className="font-mono text-muted-foreground">(%)</span></Label>
-            <Input id="proc-rh1" type="number" step="any" min={0} max={100} value={humidity} onChange={(e) => setHumidity(e.target.value)} className="font-mono" />
+          <div className="space-y-2 border-t border-foreground/[0.06] pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Stream 2</p>
+            <div className="space-y-1">
+              <Label htmlFor="proc-t2">Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
+              <Input id="proc-t2" type="number" step="any" min={-10} max={50} placeholder="-10 to 50" value={temperature2} onChange={(e) => setTemperature2(e.target.value)} className="font-mono" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="proc-rh2">RH <span className="font-mono text-muted-foreground">(%)</span></Label>
+              <Input id="proc-rh2" type="number" step="any" min={0} max={100} value={humidity2} onChange={(e) => setHumidity2(e.target.value)} className="font-mono" />
+            </div>
           </div>
-          <p className="text-xs font-medium text-muted-foreground pt-1">Stream 2</p>
-          <div className="space-y-1.5">
-            <Label htmlFor="proc-t2">Temperature <span className="font-mono text-muted-foreground">(°C)</span></Label>
-            <Input id="proc-t2" type="number" step="any" min={-10} max={50} placeholder="-10 to 50" value={temperature2} onChange={(e) => setTemperature2(e.target.value)} className="font-mono" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="proc-rh2">RH <span className="font-mono text-muted-foreground">(%)</span></Label>
-            <Input id="proc-rh2" type="number" step="any" min={0} max={100} value={humidity2} onChange={(e) => setHumidity2(e.target.value)} className="font-mono" />
-          </div>
-          <p className="text-xs font-medium text-muted-foreground pt-1">Mix Ratio</p>
-          <div className="space-y-1.5">
-            <Label htmlFor="proc-ratio">m₁ / (m₁ + m₂) <span className="font-mono text-muted-foreground">(0–1)</span></Label>
-            <Input id="proc-ratio" type="number" step="0.01" min={0.01} max={0.99} value={ratio} onChange={(e) => setRatio(e.target.value)} className="font-mono" />
+          <div className="space-y-2 border-t border-foreground/[0.06] pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Mix Ratio</p>
+            <div className="space-y-1">
+              <Label htmlFor="proc-ratio">m₁ / (m₁ + m₂) <span className="font-mono text-muted-foreground">(0–1)</span></Label>
+              <Input id="proc-ratio" type="number" step="0.01" min={0.01} max={0.99} value={ratio} onChange={(e) => setRatio(e.target.value)} className="font-mono" />
+            </div>
           </div>
         </>
       )}
