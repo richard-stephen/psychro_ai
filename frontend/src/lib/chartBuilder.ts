@@ -159,7 +159,7 @@ export function buildUploadedDataTraces(datasets: UploadedDataset[]): Data[] {
     mode: 'markers' as const,
     type: 'scatter' as const,
     name: dataset.name,
-    marker: { color: dataset.color, size: 2, symbol: 'x' as const },
+    marker: { color: dataset.color, size: dataset.markerSize, symbol: dataset.markerSymbol as const },
     hovertemplate: `Temp: %{x:.1f}°C<br>Humidity Ratio: %{y:.2f} g/kg<extra>${dataset.name}</extra>`,
   }));
 }
@@ -315,7 +315,7 @@ export function buildChartLayout(
       bgcolor: colors.background === '#1a2744' ? 'rgba(26,39,68,0.85)' : 'rgba(255,255,255,0.85)',
       bordercolor: colors.axis_line,
       borderwidth: 1,
-      font: { family: '"DM Sans Variable", sans-serif', size: 11, color: colors.axis_text },
+      font: { family: '"DM Sans Variable", sans-serif', size: 15, color: colors.axis_text },
     },
     hoverlabel: {
       bgcolor: colors.background,

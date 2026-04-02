@@ -1,5 +1,6 @@
 import pandas as pd
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import Optional
 import io
 
 from app.schemas.requests import PointRequest, DesignZoneRequest, ProcessRequest
@@ -28,33 +29,57 @@ def calculate_point(request: PointRequest):
 
 
 @router.post("/calculate/dataset", response_model=DatasetResult)
-def calculate_dataset(file: UploadFile = File(...)):
-    if not file.filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="File must be a .xlsx Excel file.")
+def calculate_dataset(
+    file: UploadFile = File(...),
+    temp_column: Optional[str] = Form(None),
+    humidity_column: Optional[str] = Form(None),
+):
+    filename = file.filename or ""
+    if not (filename.endswith(".xlsx") or filename.endswith(".csv")):
+        raise HTTPException(status_code=400, detail="File must be a .xlsx or .csv file.")
 
     contents = file.file.read()
     try:
-        df = pd.read_excel(io.BytesIO(contents))
-    except (ValueError, KeyError):
-        raise HTTPException(status_code=400, detail="Could not read Excel file.")
+        if filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read file. Ensure it is a valid .xlsx or .csv.")
 
-    if "Temperature" not in df.columns or "Humidity" not in df.columns:
+    if len(df.columns) < 2:
+        raise HTTPException(status_code=400, detail="File must contain at least two columns.")
+
+    # Resolve which columns to use
+    if temp_column and humidity_column:
+        # Explicit mapping provided by the user
+        missing = [c for c in (temp_column, humidity_column) if c not in df.columns]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Column(s) not found in file: {', '.join(missing)}")
+        t_col, rh_col = temp_column, humidity_column
+    elif "Temperature" in df.columns and "Humidity" in df.columns:
+        t_col, rh_col = "Temperature", "Humidity"
+    else:
+        # Cannot determine columns — ask the frontend to let the user map them
         raise HTTPException(
-            status_code=400,
-            detail="Excel file must contain 'Temperature' (°C) and 'Humidity' (%) columns",
+            status_code=422,
+            detail={
+                "code": "column_mapping_required",
+                "columns": df.columns.tolist(),
+            },
         )
 
-    df = df[["Temperature", "Humidity"]]
     total_rows = len(df)
+    T_series = pd.to_numeric(df[t_col], errors="coerce")
+    RH_series = pd.to_numeric(df[rh_col], errors="coerce")
+    valid_mask = (
+        T_series.notna() & RH_series.notna()
+        & (T_series >= -10) & (T_series <= 50)
+        & (RH_series >= 0) & (RH_series <= 100)
+    )
+    T_arr = T_series[valid_mask].to_numpy()
+    RH_arr = RH_series[valid_mask].to_numpy()
 
-    df["Temperature"] = pd.to_numeric(df["Temperature"], errors="coerce")
-    df["Humidity"] = pd.to_numeric(df["Humidity"], errors="coerce")
-    df_valid = df.dropna()
-    valid_rows = len(df_valid)
-    invalid_rows = total_rows - valid_rows
-
-    T_arr = df_valid["Temperature"].to_numpy()
-    RH_arr = df_valid["Humidity"].to_numpy()
     W_arr, mask = psychrometrics.calc_humidity_ratios_vectorized(T_arr, RH_arr)
 
     points = [

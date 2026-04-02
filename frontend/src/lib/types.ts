@@ -97,10 +97,14 @@ export interface ChartDataPoint {
   enthalpy: number;
 }
 
+export type MarkerSymbol = 'circle' | 'diamond' | 'x';
+
 export interface UploadedDataset {
   name: string;
   color: string;
   points: DatasetPointResult[];
+  markerSize: number;
+  markerSymbol: MarkerSymbol;
 }
 
 export interface DesignZoneConfig {

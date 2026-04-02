@@ -143,7 +143,6 @@ function ExportDropdown() {
 }
 
 export default function Sidebar() {
-  const clearData = useChartDataStore((s) => s.clearData);
   const [openPanels, setOpenPanels] = useState<[boolean, boolean, boolean, boolean]>(loadOpenState);
 
   function toggle(index: 0 | 1 | 2 | 3) {
@@ -210,13 +209,13 @@ export default function Sidebar() {
           <ExportDropdown />
         </div>
 
-        <div className="animate-slide-in-left delay-[350ms] pt-1 flex gap-2">
+        <div className="animate-slide-in-left delay-[350ms] pt-1">
           <Dialog>
             <DialogTrigger
               render={
                 <Button
                   variant="outline"
-                  className="flex-1 gap-1.5 border-section-display text-muted-foreground hover:text-foreground"
+                  className="w-full gap-1.5 border-section-display text-muted-foreground hover:text-foreground"
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" style={{ color: 'var(--section-display)' }} />
                   Display
@@ -230,14 +229,6 @@ export default function Sidebar() {
               <DisplaySettingsForm />
             </DialogContent>
           </Dialog>
-
-          <Button
-            variant="ghost"
-            className="animate-subtle-shake flex-1 border-l-2 border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={clearData}
-          >
-            Clear Data
-          </Button>
         </div>
       </div>
     </aside>

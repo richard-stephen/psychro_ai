@@ -2,11 +2,19 @@ import type { BaseChartData, PointResult, DatasetResult, DesignZoneRequest, Desi
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+type ApiError = Error & { body?: unknown };
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, options);
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.detail || `Request failed: ${response.status}`);
+    const err: ApiError = new Error(
+      typeof errorBody?.detail === 'string'
+        ? errorBody.detail
+        : `Request failed: ${response.status}`
+    );
+    err.body = errorBody;
+    throw err;
   }
   return response.json();
 }
@@ -23,9 +31,15 @@ export function calculatePoint(temperature: number, humidity: number): Promise<P
   });
 }
 
-export function calculateDataset(file: File): Promise<DatasetResult> {
+export function calculateDataset(
+  file: File,
+  tempColumn?: string,
+  humidityColumn?: string,
+): Promise<DatasetResult> {
   const formData = new FormData();
   formData.append('file', file);
+  if (tempColumn) formData.append('temp_column', tempColumn);
+  if (humidityColumn) formData.append('humidity_column', humidityColumn);
   return request('/api/v1/calculate/dataset', {
     method: 'POST',
     body: formData,
