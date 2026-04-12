@@ -1,5 +1,7 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import type { ChartProcess, ProcessInputSnapshot } from '@/lib/types';
+import { calcSpecificVolume, formatHeatDuty } from '@/lib/psychrometrics';
+import { useChartDataStore } from '@/stores/chartDataStore';
 
 const PROCESS_TYPE_LABELS: Record<string, string> = {
   sensible_heating_cooling: 'Sensible Heating / Cooling',
@@ -74,6 +76,7 @@ export default function ProcessCard({
   onDelete,
   onColorChange,
 }: ProcessCardProps) {
+  const pressurePa = useChartDataStore((s) => s.pressurePa);
   const { result, color, inputs } = process;
   const label = PROCESS_TYPE_LABELS[result.process_type];
   const end = result.end_point;
@@ -136,6 +139,21 @@ export default function ProcessCard({
             <span>{end.enthalpy.toFixed(1)} kJ/kg</span>
             <span className="text-muted-foreground">Δh</span>
             <span>{result.delta_enthalpy.toFixed(1)} kJ/kg</span>
+            {process.flowRate != null && result.process_type !== 'mixing' && (() => {
+              const v = calcSpecificVolume(result.start_point.temperature, result.start_point.humidity_ratio, pressurePa);
+              const mDa = (process.flowRate / 1000) / v;
+              const qDot = result.delta_enthalpy * mDa;
+              return (
+                <>
+                  <span className="text-muted-foreground">V̇</span>
+                  <span>{process.flowRate.toFixed(0)} L/s</span>
+                  <span className="text-muted-foreground">ρ dry air</span>
+                  <span>{(1 / v).toFixed(2)} kg/m³</span>
+                  <span className="text-muted-foreground">Q̇</span>
+                  <span>{formatHeatDuty(qDot)} kW</span>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

@@ -12,7 +12,7 @@ router = APIRouter()
 
 @router.post("/calculate/point", response_model=PointResult)
 def calculate_point(request: PointRequest):
-    W = psychrometrics.calc_humidity_ratio(request.temperature, request.humidity)
+    W = psychrometrics.calc_humidity_ratio(request.temperature, request.humidity, request.pressure_pa)
     if W is None:
         raise HTTPException(status_code=400, detail="Could not compute humidity ratio for given inputs.")
 
@@ -52,7 +52,6 @@ def calculate_dataset(
 
     # Resolve which columns to use
     if temp_column and humidity_column:
-        # Explicit mapping provided by the user
         missing = [c for c in (temp_column, humidity_column) if c not in df.columns]
         if missing:
             raise HTTPException(status_code=400, detail=f"Column(s) not found in file: {', '.join(missing)}")
@@ -60,7 +59,6 @@ def calculate_dataset(
     elif "Temperature" in df.columns and "Humidity" in df.columns:
         t_col, rh_col = "Temperature", "Humidity"
     else:
-        # Cannot determine columns — ask the frontend to let the user map them
         raise HTTPException(
             status_code=422,
             detail={
@@ -101,31 +99,37 @@ def calculate_dataset(
 @router.post("/calculate/design-zone", response_model=DesignZoneResult)
 def calculate_design_zone(request: DesignZoneRequest):
     polygon = psychrometrics.compute_design_zone_polygon(
-        request.min_temp, request.max_temp, request.min_rh, request.max_rh
+        request.min_temp, request.max_temp, request.min_rh, request.max_rh,
+        pressure_pa=request.pressure_pa,
     )
     return DesignZoneResult(polygon=Polygon(x=polygon["x"], y=polygon["y"]))
 
 
 @router.post("/calculate/process", response_model=ProcessResult)
 def calculate_process(request: ProcessRequest):
+    P = request.pressure_pa
     try:
         if request.process_type == "sensible_heating_cooling":
             result = psychrometrics.calc_sensible_heating_cooling(
-                request.temperature, request.humidity, request.target_temperature
+                request.temperature, request.humidity, request.target_temperature,
+                pressure_pa=P,
             )
         elif request.process_type == "cooling_dehumidification":
             result = psychrometrics.calc_cooling_dehumidification(
-                request.temperature, request.humidity, request.adp_temperature, request.bypass_factor
+                request.temperature, request.humidity, request.adp_temperature, request.bypass_factor,
+                pressure_pa=P,
             )
         elif request.process_type == "evaporative_cooling":
             result = psychrometrics.calc_evaporative_cooling(
-                request.temperature, request.humidity, request.target_rh
+                request.temperature, request.humidity, request.target_rh,
+                pressure_pa=P,
             )
         elif request.process_type == "mixing":
             result = psychrometrics.calc_mixing(
                 request.temperature_1, request.humidity_1,
                 request.temperature_2, request.humidity_2,
                 request.ratio,
+                pressure_pa=P,
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown process type: {request.process_type}")

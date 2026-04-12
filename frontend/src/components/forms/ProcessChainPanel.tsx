@@ -25,6 +25,7 @@ interface SingleProcessFormProps {
 }
 
 function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SingleProcessFormProps) {
+  const pressurePa = useChartDataStore((s) => s.pressurePa);
   const [processType, setProcessType] = useState<ProcessType>('sensible_heating_cooling');
   const [temperature, setTemperature] = useState('');
   const [humidity, setHumidity] = useState('');
@@ -35,6 +36,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
   const [temperature2, setTemperature2] = useState('');
   const [humidity2, setHumidity2] = useState('');
   const [ratio, setRatio] = useState('');
+  const [flowRate, setFlowRate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentColor, setCurrentColor] = useState(PROCESS_CHAIN_COLORS[slotIndex]);
 
@@ -48,6 +50,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
     setTemperature2('');
     setHumidity2('');
     setRatio('');
+    setFlowRate('');
   }
 
   function handleProcessTypeChange(value: string) {
@@ -77,6 +80,11 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
     return typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function getParsedFlowRate(): number | undefined {
+    const v = parseFloat(flowRate);
+    return isNaN(v) || v <= 0 ? undefined : v;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -113,6 +121,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         temperature: start.temp,
         humidity: start.rh,
         target_temperature: targetTemp,
+        pressure_pa: pressurePa,
       });
       const inputs: ProcessInputSnapshot = {
         process_type: 'sensible_heating_cooling',
@@ -120,7 +129,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         humidity: start.rh,
         target_temperature: targetTemp,
       };
-      onPlotted({ id: buildId(), color: currentColor, inputs, result });
+      onPlotted({ id: buildId(), color: currentColor, flowRate: getParsedFlowRate(), inputs, result });
       const direction = targetTemp > start.temp ? 'Heating' : 'Cooling';
       toast.success(`Sensible ${direction}: ${start.temp}°C → ${targetTemp}°C`);
       resetInputs();
@@ -153,6 +162,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         humidity: start.rh,
         adp_temperature: adpTemp,
         bypass_factor: bf,
+        pressure_pa: pressurePa,
       });
       const inputs: ProcessInputSnapshot = {
         process_type: 'cooling_dehumidification',
@@ -161,7 +171,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         adp_temperature: adpTemp,
         bypass_factor: bf,
       };
-      onPlotted({ id: buildId(), color: currentColor, inputs, result });
+      onPlotted({ id: buildId(), color: currentColor, flowRate: getParsedFlowRate(), inputs, result });
       toast.success(`Cooling & Dehumidification: ${start.temp}°C → ${result.end_point.temperature.toFixed(1)}°C`);
       resetInputs();
     } catch (err) {
@@ -191,6 +201,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         temperature: start.temp,
         humidity: start.rh,
         target_rh: tRh,
+        pressure_pa: pressurePa,
       });
       const inputs: ProcessInputSnapshot = {
         process_type: 'evaporative_cooling',
@@ -198,7 +209,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         humidity: start.rh,
         target_rh: tRh,
       };
-      onPlotted({ id: buildId(), color: currentColor, inputs, result });
+      onPlotted({ id: buildId(), color: currentColor, flowRate: getParsedFlowRate(), inputs, result });
       toast.success(`Evaporative Cooling: ${start.temp}°C/${start.rh}% → ${result.end_point.temperature.toFixed(1)}°C/${tRh}%`);
       resetInputs();
     } catch (err) {
@@ -248,6 +259,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         temperature_2: t2,
         humidity_2: rh2,
         ratio: r,
+        pressure_pa: pressurePa,
       });
       const inputs: ProcessInputSnapshot = {
         process_type: 'mixing',
@@ -257,7 +269,7 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
         humidity_2: rh2,
         ratio: r,
       };
-      onPlotted({ id: buildId(), color: currentColor, inputs, result });
+      onPlotted({ id: buildId(), color: currentColor, flowRate: getParsedFlowRate(), inputs, result });
       const mixT = result.mix_point?.temperature.toFixed(1) ?? '?';
       toast.success(`Mixing: T_mix = ${mixT}°C (ratio ${r})`);
       resetInputs();
@@ -405,6 +417,25 @@ function SingleProcessForm({ lockedStartPoint, slotIndex, onPlotted }: SinglePro
           </div>
         </>
       )}
+
+      <div className="space-y-1 border-t border-foreground/[0.06] pt-3">
+        <Label htmlFor={`proc-flow-${slotIndex}`}>
+          Flow Rate <span className="font-mono text-muted-foreground">(L/s, optional)</span>
+        </Label>
+        <Input
+          id={`proc-flow-${slotIndex}`}
+          type="number"
+          step="any"
+          min={0}
+          value={flowRate}
+          onChange={(e) => setFlowRate(e.target.value)}
+          className="font-mono"
+          placeholder="e.g. 500"
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Volumetric flow at the entering state of this process.
+        </p>
+      </div>
 
       <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={isSubmitting}>
         {isSubmitting ? 'Calculating…' : slotIndex === 0 ? 'Plot Process' : 'Continue Process'}

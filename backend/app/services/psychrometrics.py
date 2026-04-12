@@ -21,8 +21,19 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DEWPOINT_DATA = pd.read_csv(_DATA_DIR / "dewpoint_data.csv").to_dict("records")
 ENTHALPY_DATA = pd.read_csv(_DATA_DIR / "enthalpy_intersections.csv").to_dict("records")
 
+T_DB_RANGE = np.linspace(T_DB_MIN, T_DB_MAX, 100)
 
-# ── Core calculation functions (preserved from simple_enthalpy.py) ─────
+
+# ── Altitude / pressure conversion ────────────────────────────────────
+
+def altitude_to_pressure(altitude_m: float) -> float:
+    """ASHRAE Fundamentals Chapter 1 standard atmosphere.
+    Valid range: -500 to 5000 m.
+    """
+    return 101325 * (1 - 2.25577e-5 * altitude_m) ** 5.2559
+
+
+# ── Core calculation functions ─────────────────────────────────────────
 
 def calc_humidity_ratio(T_db, RH_percent, P=ATMOSPHERIC_PRESSURE_PA):
     """Calculates Humidity Ratio (g/kg) from T_db (°C) and RH (%)"""
@@ -66,8 +77,10 @@ def calc_humidity_ratios_vectorized(T_db_arr, RH_percent_arr, P=ATMOSPHERIC_PRES
     return W_gkg, valid
 
 
-def calc_enthalpy(T_db, W, P=ATMOSPHERIC_PRESSURE_PA):
-    """Calculates Enthalpy (kJ/kg) from T_db (°C) and Humidity Ratio (g/kg)"""
+def calc_enthalpy(T_db, W):
+    """Calculates Enthalpy (kJ/kg) from T_db (°C) and Humidity Ratio (g/kg).
+    Enthalpy h = 1.006T + W(2501 + 1.86T) is pressure-independent.
+    """
     try:
         W_kg = W / GRAMS_PER_KG
         enthalpy = psy.GetMoistAirEnthalpy(T_db, W_kg)
@@ -77,33 +90,65 @@ def calc_enthalpy(T_db, W, P=ATMOSPHERIC_PRESSURE_PA):
         return None
 
 
-# ── Pre-computed chart data (computed once at import) ──────────────────
-T_DB_RANGE = np.linspace(T_DB_MIN, T_DB_MAX, 100)
-W_SAT_LIST = [calc_humidity_ratio(t, 100.0) for t in T_DB_RANGE]
-_SAT_AT_T = {t: calc_humidity_ratio(t, 100.0) for t in T_AXIS}
-RH_CURVES = {rh: [calc_humidity_ratio(t, float(rh)) for t in T_DB_RANGE] for rh in RH_LEVELS}
+# ── Chart data helpers ────────────────────────────────────────────────
+
+def _trim_curve_at_wmax(temperatures, w_values, w_max: float = W_MAX):
+    """
+    Return (T_list, W_list) trimmed to end exactly at w_max via linear
+    interpolation. Values beyond w_max are dropped (no Nones passed to Plotly).
+    """
+    T_out: list[float] = []
+    W_out: list[float] = []
+    t_arr = list(temperatures)
+    for i, w in enumerate(w_values):
+        if w is None:
+            break
+        if w > w_max:
+            if T_out:
+                w_prev = W_out[-1]
+                frac = (w_max - w_prev) / (w - w_prev)
+                T_out.append(t_arr[i - 1] + frac * (t_arr[i] - t_arr[i - 1]))
+                W_out.append(float(w_max))
+            break
+        T_out.append(float(t_arr[i]))
+        W_out.append(float(w))
+    return T_out, W_out
 
 
 # ── Chart data functions ──────────────────────────────────────────────
 
-def get_base_chart_data() -> dict:
-    """Returns all static chart geometry as raw coordinate data (no Plotly)."""
+def get_base_chart_data(pressure_pa: float = ATMOSPHERIC_PRESSURE_PA) -> dict:
+    """Returns all static chart geometry as raw coordinate data (no Plotly).
+    All curves are computed at the given atmospheric pressure.
+    """
 
-    # Saturation curve (100% RH)
+    # ── Saturation curve ──────────────────────────────────────────────
+    # Compute full (unclipped) saturation W — used for dewpoint interpolation and enthalpy intersections
+    W_sat_full = [calc_humidity_ratio(t, 100.0, pressure_pa) for t in T_DB_RANGE]
+
+    # Paired valid arrays used by both dewpoint and enthalpy sections
+    T_valid = [float(T_DB_RANGE[i]) for i, w in enumerate(W_sat_full) if w is not None]
+    W_sat_valid = [w for w in W_sat_full if w is not None]
+
+    # Trim at W_MAX with interpolated endpoint so the curve meets the top boundary exactly
+    sat_T, sat_W = _trim_curve_at_wmax(T_DB_RANGE, W_sat_full)
+
     saturation_curve = {
-        "temperatures": T_DB_RANGE.tolist(),
-        "humidity_ratios": W_SAT_LIST,
+        "temperatures": sat_T,
+        "humidity_ratios": sat_W,
     }
 
-    # RH curves + annotation positions (all labels at same x for vertical alignment)
+    # ── RH curves + annotation positions ─────────────────────────────
     rh_curves = {}
     rh_annotations = []
     label_index = int(np.argmin(np.abs(T_DB_RANGE - 32)))  # fixed x ≈ 32°C
+
     for rh in RH_LEVELS:
-        W_rh_list = RH_CURVES[rh]
+        W_rh_list = [calc_humidity_ratio(t, float(rh), pressure_pa) for t in T_DB_RANGE]
+        rh_T, rh_W = _trim_curve_at_wmax(T_DB_RANGE, W_rh_list)
         rh_curves[str(rh)] = {
-            "temperatures": T_DB_RANGE.tolist(),
-            "humidity_ratios": W_rh_list,
+            "temperatures": rh_T,
+            "humidity_ratios": rh_W,
         }
         w_at_label = W_rh_list[label_index]
         rh_annotations.append({
@@ -112,17 +157,30 @@ def get_base_chart_data() -> dict:
             "y": w_at_label if w_at_label is not None and w_at_label <= W_MAX else None,
         })
 
-    # Enthalpy lines
+    # ── Enthalpy lines ────────────────────────────────────────────────
+    # Pressure-independent: h = 1.006T + W(2501 + 1.86T)
     enthalpy_lines = []
+    _T_arr = np.array(T_valid)
+    _W_sat_arr = np.array(W_sat_valid)
     for data in ENTHALPY_DATA:
         h = data["Enthalpy"]
-        T_intersect = data["Temperature"]
+
+        # Compute T_intersect dynamically: where W_enth(T) crosses W_sat(T, pressure_pa).
+        # W_enth decreases with T; W_sat increases with T → unique crossing.
+        W_enth_arr = ((h - 1.006 * _T_arr) * 1000) / (2501 + 1.86 * _T_arr)
+        diff = W_enth_arr - _W_sat_arr  # + above sat curve, - below
+        crossings = np.where(np.diff(np.sign(diff)) < 0)[0]  # + → - transition
+        if len(crossings) == 0:
+            T_intersect = float(_T_arr[0])
+        else:
+            idx = int(crossings[0])
+            frac = -diff[idx] / (diff[idx + 1] - diff[idx])
+            T_intersect = float(_T_arr[idx] + frac * (_T_arr[idx + 1] - _T_arr[idx]))
 
         T_start = h / 1.006
         T_points = np.linspace(T_intersect, T_start, 50)
         W_points = [((h - 1.006 * T) * 1000) / (2501 + 1.86 * T) for T in T_points]
 
-        # Label position (from main.py lines 117-118)
         T_label = T_intersect - 0.8
         W_label = ((h - 1.006 * T_label) * 1000) / (2501 + 1.86 * T_label)
 
@@ -133,26 +191,36 @@ def get_base_chart_data() -> dict:
             "label_position": {"x": T_label, "y": W_label},
         })
 
-    # Dewpoint lines (horizontal humidity ratio lines)
-    dewpoint_lines = [
-        {
-            "humidity_ratio": data["HR"],
-            "dewpoint_temp": data["Dew point"],
+    # ── Dewpoint lines ────────────────────────────────────────────────
+    # Horizontal lines at constant W. The dewpoint_temp (where the line meets
+    # the saturation curve) shifts at altitude. We find it by reverse-
+    # interpolating on the saturation curve: T_dp where W_sat(T_dp) = W_hr.
+    # W_sat is monotonically increasing with T, so np.interp is safe.
+    # (T_valid and W_sat_valid are already computed above.)
+    dewpoint_lines = []
+    for data in DEWPOINT_DATA:
+        hr = data["HR"]
+        if W_sat_valid and hr >= W_sat_valid[0] and hr <= W_sat_valid[-1]:
+            t_dp = float(np.interp(hr, W_sat_valid, T_valid))
+        else:
+            # HR outside the visible saturation range — skip this dewpoint line
+            continue
+        dewpoint_lines.append({
+            "humidity_ratio": hr,
+            "dewpoint_temp": round(t_dp, 2),
             "max_temp": T_DB_MAX,
-        }
-        for data in DEWPOINT_DATA
-    ]
+        })
 
-    # Vertical dry-bulb temperature lines
+    # ── Vertical dry-bulb temperature lines ──────────────────────────
     vertical_lines = [
         {
             "temperature": t,
-            "max_humidity_ratio": _SAT_AT_T[t],
+            "max_humidity_ratio": calc_humidity_ratio(t, 100.0, pressure_pa),
         }
         for t in T_AXIS
     ]
 
-    # Axis configuration
+    # ── Axis configuration (y_max fixed — curves clip at top) ────────
     axis_config = {
         "x_min": T_DB_MIN,
         "x_max": T_DB_MAX,
@@ -172,9 +240,9 @@ def get_base_chart_data() -> dict:
     }
 
 
-def calc_sensible_heating_cooling(T1, RH1, T2_target) -> dict:
+def calc_sensible_heating_cooling(T1, RH1, T2_target, pressure_pa=ATMOSPHERIC_PRESSURE_PA) -> dict:
     """Sensible heating/cooling: constant humidity ratio, temperature changes."""
-    W1 = calc_humidity_ratio(T1, RH1)
+    W1 = calc_humidity_ratio(T1, RH1, pressure_pa)
     if W1 is None:
         raise ValueError("Could not compute humidity ratio for start state.")
 
@@ -184,7 +252,7 @@ def calc_sensible_heating_cooling(T1, RH1, T2_target) -> dict:
         raise ValueError("Could not compute enthalpy for start state.")
 
     # Check if target temp would push above saturation (below dewpoint)
-    W_sat_at_T2 = calc_humidity_ratio(T2_target, 100.0)
+    W_sat_at_T2 = calc_humidity_ratio(T2_target, 100.0, pressure_pa)
     if W_sat_at_T2 is not None and W1 > W_sat_at_T2:
         raise ValueError(
             "Target temperature is below the dewpoint of the start state. "
@@ -192,7 +260,7 @@ def calc_sensible_heating_cooling(T1, RH1, T2_target) -> dict:
         )
 
     # End state: same W, new T
-    RH2 = psy.GetRelHumFromHumRatio(T2_target, W1_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    RH2 = psy.GetRelHumFromHumRatio(T2_target, W1_kg, pressure_pa) * 100
     h2 = calc_enthalpy(T2_target, W1)
     if h2 is None:
         raise ValueError("Could not compute enthalpy for end state.")
@@ -225,9 +293,9 @@ def calc_sensible_heating_cooling(T1, RH1, T2_target) -> dict:
     }
 
 
-def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
+def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor, pressure_pa=ATMOSPHERIC_PRESSURE_PA) -> dict:
     """Cooling & dehumidification toward an apparatus dewpoint (ADP)."""
-    W1 = calc_humidity_ratio(T1, RH1)
+    W1 = calc_humidity_ratio(T1, RH1, pressure_pa)
     if W1 is None:
         raise ValueError("Could not compute humidity ratio for start state.")
     h1 = calc_enthalpy(T1, W1)
@@ -235,7 +303,7 @@ def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
         raise ValueError("Could not compute enthalpy for start state.")
 
     # ADP is on saturation curve (100% RH)
-    W_adp = calc_humidity_ratio(T_adp, 100.0)
+    W_adp = calc_humidity_ratio(T_adp, 100.0, pressure_pa)
     if W_adp is None:
         raise ValueError("Could not compute humidity ratio at ADP.")
 
@@ -251,7 +319,7 @@ def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
     W2 = W_adp + bypass_factor * (W1 - W_adp)
 
     W2_kg = W2 / GRAMS_PER_KG
-    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, pressure_pa) * 100
     h2 = calc_enthalpy(T2, W2)
     if h2 is None:
         raise ValueError("Could not compute enthalpy for end state.")
@@ -262,7 +330,6 @@ def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
     line_w = np.linspace(W1, W2, n_points).tolist()
 
     delta_h = h2 - h1
-    delta_w = W2 - W1
     delta_t = T2 - T1
     # SHR = sensible / total = cp*ΔT / Δh
     shr = (1.006 * delta_t) / (delta_h) if delta_h != 0 else None
@@ -288,26 +355,27 @@ def calc_cooling_dehumidification(T1, RH1, T_adp, bypass_factor) -> dict:
     }
 
 
-def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
+def calc_evaporative_cooling(T1, RH1, target_RH, pressure_pa=ATMOSPHERIC_PRESSURE_PA) -> dict:
     """Evaporative cooling: follows constant wet-bulb temperature line."""
     if target_RH <= RH1:
         raise ValueError("Target RH must be higher than start RH.")
     if target_RH > 100:
         raise ValueError("Target RH cannot exceed 100%.")
 
-    W1 = calc_humidity_ratio(T1, RH1)
+    W1 = calc_humidity_ratio(T1, RH1, pressure_pa)
     if W1 is None:
         raise ValueError("Could not compute humidity ratio for start state.")
-    W1_kg = W1 / GRAMS_PER_KG
     h1 = calc_enthalpy(T1, W1)
     if h1 is None:
         raise ValueError("Could not compute enthalpy for start state.")
 
     # Find wet-bulb temperature of start state
-    T_wb = psy.GetTWetBulbFromRelHum(T1, RH1 / 100.0, ATMOSPHERIC_PRESSURE_PA)
+    T_wb = psy.GetTWetBulbFromRelHum(T1, RH1 / 100.0, pressure_pa)
+
+    if T_wb >= T1:
+        raise ValueError("Could not determine a valid wet-bulb temperature for the start state.")
 
     # Sweep T_db downward from T1, following constant wet-bulb line
-    # At each T_db, compute W from wet-bulb, then check RH
     n_sweep = 200
     T_sweep = np.linspace(T1, T_wb, n_sweep)
     path_temps = [T1]
@@ -317,9 +385,9 @@ def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
 
     for T_db in T_sweep[1:]:
         try:
-            W_kg = psy.GetHumRatioFromTWetBulb(T_db, T_wb, ATMOSPHERIC_PRESSURE_PA)
+            W_kg = psy.GetHumRatioFromTWetBulb(T_db, T_wb, pressure_pa)
             W_gkg = W_kg * GRAMS_PER_KG
-            RH_at_point = psy.GetRelHumFromHumRatio(T_db, W_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+            RH_at_point = psy.GetRelHumFromHumRatio(T_db, W_kg, pressure_pa) * 100
         except (ValueError, TypeError):
             continue
 
@@ -327,7 +395,6 @@ def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
         path_w.append(float(W_gkg))
 
         if RH_at_point >= target_RH:
-            # Interpolate between this point and previous to find exact crossing
             T2 = float(T_db)
             W2 = float(W_gkg)
             break
@@ -336,7 +403,7 @@ def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
         raise ValueError("Could not reach target RH along wet-bulb line.")
 
     W2_kg = W2 / GRAMS_PER_KG
-    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    RH2 = psy.GetRelHumFromHumRatio(T2, W2_kg, pressure_pa) * 100
     h2 = calc_enthalpy(T2, W2)
     if h2 is None:
         raise ValueError("Could not compute enthalpy for end state.")
@@ -370,10 +437,10 @@ def calc_evaporative_cooling(T1, RH1, target_RH) -> dict:
     }
 
 
-def calc_mixing(T1, RH1, T2, RH2, ratio) -> dict:
+def calc_mixing(T1, RH1, T2, RH2, ratio, pressure_pa=ATMOSPHERIC_PRESSURE_PA) -> dict:
     """Mixing of two airstreams using enthalpy-based method (thermodynamically correct)."""
     # Stream 1
-    W1 = calc_humidity_ratio(T1, RH1)
+    W1 = calc_humidity_ratio(T1, RH1, pressure_pa)
     if W1 is None:
         raise ValueError("Could not compute humidity ratio for stream 1.")
     h1 = calc_enthalpy(T1, W1)
@@ -381,7 +448,7 @@ def calc_mixing(T1, RH1, T2, RH2, ratio) -> dict:
         raise ValueError("Could not compute enthalpy for stream 1.")
 
     # Stream 2
-    W2 = calc_humidity_ratio(T2, RH2)
+    W2 = calc_humidity_ratio(T2, RH2, pressure_pa)
     if W2 is None:
         raise ValueError("Could not compute humidity ratio for stream 2.")
     h2 = calc_enthalpy(T2, W2)
@@ -393,10 +460,11 @@ def calc_mixing(T1, RH1, T2, RH2, ratio) -> dict:
     h_mix = ratio * h1 + (1 - ratio) * h2  # kJ/kg — enthalpy is conserved
 
     # Derive T_mix from h_mix and W_mix using psychrolib
+    # GetTDryBulbFromEnthalpyAndHumRatio is pressure-independent (uses h formula directly)
     W_mix_kg = W_mix / GRAMS_PER_KG
     h_mix_J = h_mix * 1000  # psychrolib expects J/kg
     T_mix = psy.GetTDryBulbFromEnthalpyAndHumRatio(h_mix_J, W_mix_kg)
-    RH_mix = psy.GetRelHumFromHumRatio(T_mix, W_mix_kg, ATMOSPHERIC_PRESSURE_PA) * 100
+    RH_mix = psy.GetRelHumFromHumRatio(T_mix, W_mix_kg, pressure_pa) * 100
 
     # 3-point line: stream 1 → mix point → stream 2
     line_temps = [T1, T_mix, T2]
@@ -431,17 +499,17 @@ def calc_mixing(T1, RH1, T2, RH2, ratio) -> dict:
     }
 
 
-def compute_design_zone_polygon(min_temp, max_temp, min_rh, max_rh) -> dict:
+def compute_design_zone_polygon(min_temp, max_temp, min_rh, max_rh, pressure_pa=ATMOSPHERIC_PRESSURE_PA) -> dict:
     """Computes design zone polygon boundary coordinates."""
     temps = np.linspace(min_temp, max_temp, 50)
 
     # Bottom edge: min_rh curve, left to right
     x_bottom = list(temps)
-    y_bottom = [calc_humidity_ratio(t, min_rh) for t in temps]
+    y_bottom = [calc_humidity_ratio(t, min_rh, pressure_pa) for t in temps]
 
     # Top edge: max_rh curve, right to left (reversed to close polygon)
     x_top = list(reversed(temps))
-    y_top = [calc_humidity_ratio(t, max_rh) for t in reversed(temps)]
+    y_top = [calc_humidity_ratio(t, max_rh, pressure_pa) for t in reversed(temps)]
 
     x_zone = x_bottom + x_top + [x_bottom[0]]
     y_zone = y_bottom + y_top + [y_bottom[0]]

@@ -1,10 +1,14 @@
 from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field, model_validator
 
+# Pressure bounds: 54000 Pa ≈ 5000 m altitude, 108500 Pa ≈ -500 m (below sea level)
+_PRESSURE_FIELD = Field(default=101325.0, ge=54000, le=108500)
+
 
 class PointRequest(BaseModel):
     temperature: float = Field(ge=-10, le=50)
     humidity: float = Field(ge=0, le=100)
+    pressure_pa: float = _PRESSURE_FIELD
 
 
 class DesignZoneRequest(BaseModel):
@@ -12,6 +16,7 @@ class DesignZoneRequest(BaseModel):
     max_temp: float = Field(ge=-10, le=50)
     min_rh: float = Field(ge=0, le=100)
     max_rh: float = Field(ge=0, le=100)
+    pressure_pa: float = _PRESSURE_FIELD
 
     @model_validator(mode='after')
     def validate_ranges(self):
@@ -27,6 +32,7 @@ class SensibleHeatingCoolingRequest(BaseModel):
     temperature: float = Field(ge=-10, le=50)
     humidity: float = Field(ge=0, le=100)
     target_temperature: float = Field(ge=-10, le=50)
+    pressure_pa: float = _PRESSURE_FIELD
 
 
 class CoolingDehumidificationRequest(BaseModel):
@@ -35,6 +41,7 @@ class CoolingDehumidificationRequest(BaseModel):
     humidity: float = Field(ge=0, le=100)
     adp_temperature: float = Field(ge=-10, le=50)
     bypass_factor: float = Field(gt=0, lt=1)
+    pressure_pa: float = _PRESSURE_FIELD
 
 
 class EvaporativeCoolingRequest(BaseModel):
@@ -42,6 +49,7 @@ class EvaporativeCoolingRequest(BaseModel):
     temperature: float = Field(ge=-10, le=50)
     humidity: float = Field(ge=0, le=100)
     target_rh: float = Field(gt=0, le=100)
+    pressure_pa: float = _PRESSURE_FIELD
 
 
 class MixingRequest(BaseModel):
@@ -51,6 +59,7 @@ class MixingRequest(BaseModel):
     temperature_2: float = Field(ge=-10, le=50)
     humidity_2: float = Field(ge=0, le=100)
     ratio: float = Field(gt=0, lt=1)
+    pressure_pa: float = _PRESSURE_FIELD
 
 
 ProcessRequest = Annotated[

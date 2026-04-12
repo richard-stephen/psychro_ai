@@ -19,8 +19,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
-export function fetchBaseChartData(): Promise<BaseChartData> {
-  return request('/api/v1/chart/base-data');
+export function fetchBaseChartData(pressurePa: number = 101325): Promise<BaseChartData> {
+  const params = pressurePa !== 101325 ? `?pressure_pa=${pressurePa}` : '';
+  return request(`/api/v1/chart/base-data${params}`);
 }
 
 export function calculatePoint(temperature: number, humidity: number): Promise<PointResult> {
@@ -46,7 +47,7 @@ export function calculateDataset(
   });
 }
 
-export function calculateDesignZone(config: DesignZoneRequest): Promise<DesignZoneResult> {
+export function calculateDesignZone(config: DesignZoneRequest & { pressure_pa?: number }): Promise<DesignZoneResult> {
   return request('/api/v1/calculate/design-zone', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

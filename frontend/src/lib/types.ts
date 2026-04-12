@@ -178,6 +178,7 @@ export type ProcessInputSnapshot =
 export interface ChartProcess {
   id: string;
   color: string;
+  flowRate?: number;  // volumetric flow rate at entering state, L/s
   inputs: ProcessInputSnapshot;
   result: ProcessResult;
 }

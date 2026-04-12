@@ -1,6 +1,7 @@
 import type { Data, Layout, Annotations, Config } from 'plotly.js';
 import { CHART_COLORS, CHART_THEMES } from './constants';
 import type { ChartThemeColors } from './constants';
+import { calcSpecificVolume, formatHeatDuty } from './psychrometrics';
 import type {
   BaseChartData,
   SaturationCurve,
@@ -187,21 +188,31 @@ const PROCESS_LABELS: Record<ProcessType, string> = {
   mixing: 'Mixing',
 };
 
-export function buildProcessTraces(processes: ChartProcess[], colors: ChartThemeColors): Data[] {
+export function buildProcessTraces(
+  processes: ChartProcess[],
+  colors: ChartThemeColors,
+  pressurePa: number = 101325,
+): Data[] {
   return processes.map((proc) => {
     const { result } = proc;
     const n = result.line_temperatures.length;
     const label = PROCESS_LABELS[result.process_type];
     const deltaH = result.delta_enthalpy.toFixed(1);
-
     const isMixing = result.process_type === 'mixing';
+
+    let traceName = `${label}<br>Δh: ${deltaH} kJ/kg`;
+    if (proc.flowRate != null && proc.flowRate > 0 && !isMixing) {
+      const v = calcSpecificVolume(result.start_point.temperature, result.start_point.humidity_ratio, pressurePa);
+      const qDot = result.delta_enthalpy * (proc.flowRate / 1000) / v;
+      traceName += `<br>Q̇: ${formatHeatDuty(qDot)} kW`;
+    }
 
     return {
       x: result.line_temperatures,
       y: result.line_humidity_ratios,
       mode: 'lines+markers' as const,
       type: 'scatter' as const,
-      name: `${label}<br>Δh: ${deltaH} kJ/kg`,
+      name: traceName,
       line: { color: proc.color, width: 2.5 },
       marker: {
         color: proc.color,

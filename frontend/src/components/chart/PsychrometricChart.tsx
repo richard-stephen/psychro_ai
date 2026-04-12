@@ -21,7 +21,7 @@ import {
 import { registerGraphDiv } from '@/lib/chartExport';
 
 export default function PsychrometricChart() {
-  const { baseData, dataPoints, uploadedDatasets, designZone, processes, isLoading, displaySettings } =
+  const { baseData, dataPoints, uploadedDatasets, designZone, processes, isLoading, displaySettings, pressurePa } =
     useChartDataStore(
       useShallow((s) => ({
         baseData: s.baseData,
@@ -31,6 +31,7 @@ export default function PsychrometricChart() {
         processes: s.processes,
         isLoading: s.isLoading,
         displaySettings: s.displaySettings,
+        pressurePa: s.pressurePa,
       }))
     );
 
@@ -43,7 +44,7 @@ export default function PsychrometricChart() {
     async function load() {
       setLoading(true);
       try {
-        const data = await fetchBaseChartData();
+        const data = await fetchBaseChartData(pressurePa);
         if (!cancelled) setBaseData(data);
       } catch (err) {
         console.error('Failed to fetch base chart data:', err);
@@ -54,7 +55,7 @@ export default function PsychrometricChart() {
 
     load();
     return () => { cancelled = true; };
-  }, [setBaseData, setLoading]);
+  }, [pressurePa, setBaseData, setLoading]);
 
   const { traces, layout } = useMemo(() => {
     if (!baseData) return { traces: [], layout: {} };
@@ -81,14 +82,14 @@ export default function PsychrometricChart() {
       : [];
 
     if (processes.length > 0) {
-      userTraces.push(...buildProcessTraces(processes, colors));
+      userTraces.push(...buildProcessTraces(processes, colors, pressurePa));
     }
 
     return {
       traces: [...baseTraces, ...userTraces],
       layout: buildChartLayout([...annotations, ...processAnnotations], colors),
     };
-  }, [baseData, dataPoints, uploadedDatasets, designZone, processes, displaySettings]);
+  }, [baseData, dataPoints, uploadedDatasets, designZone, processes, displaySettings, pressurePa]);
 
   if (isLoading && !baseData) {
     return (
@@ -106,7 +107,7 @@ export default function PsychrometricChart() {
           Psychrometric Chart
         </h2>
         <p className="text-[10px] text-muted-foreground">
-          101.325 kPa
+          {(pressurePa / 1000).toFixed(3)} kPa
         </p>
       </div>
       <div className="flex-1 min-h-0 rounded-xl bg-card shadow-sm ring-1 ring-border/50">
